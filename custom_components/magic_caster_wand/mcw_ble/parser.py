@@ -58,6 +58,7 @@ class McwDevice:
         super().__init__()
 
     def register_coordinator(self, cn):
+        _LOGGER.debug("register_coordinator: %s", cn)
         self._coordinator = cn
 
     def callback(self, data):
