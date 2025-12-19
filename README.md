@@ -1,8 +1,3 @@
-## 🚫 Device Support
-
-**⚠️ No devices are supported at this time.**  
-**Implementation plans are _yet to be determined_.**
-
 # hass-magic-caster-wand
 Harry Potter: Magic Caster Wand Home Assistant Integration
 
@@ -12,7 +7,7 @@ Harry Potter: Magic Caster Wand Home Assistant Integration
 💡 Have a question or suggestion? Join the [Discussion](https://github.com/eigger/hass-magic-caster-wand/discussions)!
 
 ## Supported Models
-- Not yet
+- Defiant
 
 ## Installation
 1. Install this integration with HACS (adding repository required), or copy the contents of this
