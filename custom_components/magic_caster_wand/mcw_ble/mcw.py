@@ -67,7 +67,7 @@ class McwClient:
     async def is_connected(self) -> bool:
         return self.client.is_connected
     
-    async def register_callbck(self, cb):
+    def register_callbck(self, cb):
         self.callback = cb
 
     @disconnect_on_missing_services
@@ -94,20 +94,19 @@ class McwClient:
             self.event.set()
         response = Protocol.parse_response(data)
         response_strem = Protocol.parse_stream(data)
-        if not self.callback:
-            _LOGGER.debug("callback: %s", str(response_strem))
-            if isinstance(response_strem, EventSpell):
-                _LOGGER.debug("spell: %s", response_strem.name)
+        if isinstance(response_strem, EventSpell):
+            _LOGGER.debug("spell: %s", response_strem.name)
+            if not self.callback:
                 self.callback(response_strem.name)
-            elif isinstance(response_strem, EventButton):
-                if response_strem.is_big_pressed:
-                    self.callback("big")
-                elif response_strem.is_top_pressed:
-                    self.callback("top")
-                elif response_strem.is_mid_pressed:
-                    self.callback("mid")
-                elif response_strem.is_bot_pressed:
-                    self.callback("bot")
+        # elif isinstance(response_strem, EventButton):
+        #     if response_strem.is_big_pressed:
+        #         self.callback("big")
+        #     elif response_strem.is_top_pressed:
+        #         self.callback("top")
+        #     elif response_strem.is_mid_pressed:
+        #         self.callback("mid")
+        #     elif response_strem.is_bot_pressed:
+        #         self.callback("bot")
         if isinstance(response, ResponseWandType):
             self.wand_type = response
         elif isinstance(response, ResponseSerialNumber):
