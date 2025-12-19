@@ -69,7 +69,6 @@ class McwClient:
     
     def register_callbck(self, cb):
         self.callback = cb
-        _LOGGER.debug("register_callbck: %s", self.callback)
 
     @disconnect_on_missing_services
     async def start_notify(self) -> None:

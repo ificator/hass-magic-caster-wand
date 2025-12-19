@@ -58,12 +58,15 @@ class McwDevice:
         super().__init__()
 
     def register_coordinator(self, cn):
-        _LOGGER.debug("register_coordinator: %s", cn)
         self._coordinator = cn
 
     def callback(self, data):
-        _LOGGER.debug("spell call back: %s", data)
         self._coordinator.async_set_updated_data(data)
+        asyncio.create_task(self._set_ready_later())
+
+    async def _set_ready_later(self):
+        await asyncio.sleep(1)
+        self._coordinator.async_set_updated_data("Ready")
 
     async def update_device(self, ble_device: BLEDevice) -> BLEData:
         """Connects to the device through BLE and retrieves relevant data"""
@@ -79,7 +82,6 @@ class McwDevice:
                 self._data.address = ble_device.address
                 self._mcw = McwClient(client)
                 self._mcw.register_callbck(self.callback)
-                _LOGGER.debug("registered callback = %r", getattr(self._mcw, "_callback", None))
                 await self._mcw.start_notify()
 
             try:
