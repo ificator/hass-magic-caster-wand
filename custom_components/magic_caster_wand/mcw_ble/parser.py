@@ -60,7 +60,7 @@ class McwDevice:
     def register_coordinator(self, cn):
         self._coordinator = cn
 
-    async def callback(self, data):
+    def callback(self, data):
         _LOGGER.debug("spell call back: %s", data)
         self._coordinator.async_set_updated_data(data)
 
