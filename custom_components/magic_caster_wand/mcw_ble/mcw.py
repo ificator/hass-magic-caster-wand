@@ -147,13 +147,13 @@ class McwClient:
                 raise last_exception
             
     async def keep_alive(self) -> bytes:
-        res = self.write_command(Protocol.build_keep_alive())
+        res = await self.write_command(Protocol.build_keep_alive())
         return Protocol.parse_response(res)
     
     async def request_firmware(self) -> ResponseFirmware:
-        res = self.write_command(Protocol.build_request_firmware())
+        res = await self.write_command(Protocol.build_request_firmware())
         return Protocol.parse_response(res)
 
     async def request_request_box_address(self) -> ResponseBoxAddress:
-        res = self.write_command(Protocol.build_request_box_address())
+        res = await self.write_command(Protocol.build_request_box_address())
         return Protocol.parse_response(res)
