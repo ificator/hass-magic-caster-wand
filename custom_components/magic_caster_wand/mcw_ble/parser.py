@@ -55,7 +55,7 @@ class McwDevice:
         self._data = BLEData()
         self._mcw = None
         self._coordinator = None
-        self._await = "awaiting spell"
+        self._await = "awaiting"
         super().__init__()
 
     def register_coordinator(self, cn):

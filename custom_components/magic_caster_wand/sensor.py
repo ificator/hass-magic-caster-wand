@@ -174,7 +174,7 @@ class McwSellSensor(
         self._identifier = address.replace(":", "")[-8:]
         self._attr_name = f"Mcw {self._identifier} Spell"
         self._attr_unique_id = f"mcw_{self._identifier}_spell"
-        self._spell = ""
+        self._spell = "awaiting"
 
 
     @property
