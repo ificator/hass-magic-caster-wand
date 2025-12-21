@@ -83,7 +83,6 @@ class McwDevice:
                 self._data.address = ble_device.address
                 self._mcw = McwClient(client)
                 self._mcw.register_callbck(self.callback)
-                self._coordinator.async_set_updated_data(self._await)
                 await self._mcw.start_notify()
 
             try:
@@ -129,6 +128,6 @@ class McwBluetoothDeviceData(BluetoothData):
 
 
     def supported(self, data: BluetoothServiceInfoBleak) -> bool:
-        if not super().supported(data):
-            return False
+        # if not super().supported(data):
+        #     return False
         return True

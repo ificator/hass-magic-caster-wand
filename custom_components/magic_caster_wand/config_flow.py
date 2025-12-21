@@ -1,71 +1,64 @@
-"""Config flow for Mcw BlE integration."""
+"""Config flow for Mcw Bluetooth integration."""
 
+from __future__ import annotations
+
+from collections.abc import Mapping
 import dataclasses
-import logging
 from typing import Any
+
+from .mcw_ble import McwBluetoothDeviceData as DeviceData
 import voluptuous as vol
 
+from homeassistant.components import onboarding
 from homeassistant.components.bluetooth import (
-    BluetoothServiceInfo,
+    BluetoothServiceInfoBleak,
     async_discovered_service_info,
 )
-from homeassistant.core import callback
-from homeassistant.config_entries import (
-    ConfigFlow,
-    OptionsFlowWithReload,
-    ConfigEntry,
-    ConfigFlowResult,
-)
-from homeassistant.const import CONF_ADDRESS, CONF_SCAN_INTERVAL
-from homeassistant.data_entry_flow import FlowResult, FlowContext
-from homeassistant.helpers.selector import (
-    NumberSelector,
-    NumberSelectorConfig,
-    NumberSelectorMode,
-)
+from homeassistant.config_entries import SOURCE_REAUTH, ConfigFlow, ConfigFlowResult
+from homeassistant.const import CONF_ADDRESS
 
-from .const import (
-    DOMAIN,
-)
-
-
-_LOGGER = logging.getLogger(__name__)
-
+from .const import DOMAIN
 
 
 @dataclasses.dataclass
 class Discovery:
     """A discovered bluetooth device."""
 
-    name: str
-    discovery_info: BluetoothServiceInfo
+    title: str
+    discovery_info: BluetoothServiceInfoBleak
+    device: DeviceData
 
 
-class McwDeviceUpdateError(Exception):
-    """Custom error class for device updates."""
+def _title(discovery_info: BluetoothServiceInfoBleak, device: DeviceData) -> str:
+    return device.title or device.get_device_name() or discovery_info.name
 
 
 class McwConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Mcw BLE."""
+    """Handle a config flow for Mcw Bluetooth."""
 
     VERSION = 1
 
     def __init__(self) -> None:
         """Initialize the config flow."""
-        self._discovered_device: Discovery | None = None
+        self._discovery_info: BluetoothServiceInfoBleak | None = None
+        self._discovered_device: DeviceData | None = None
         self._discovered_devices: dict[str, Discovery] = {}
 
     async def async_step_bluetooth(
-        self, discovery_info: BluetoothServiceInfo
+        self, discovery_info: BluetoothServiceInfoBleak
     ) -> ConfigFlowResult:
         """Handle the bluetooth discovery step."""
-        _LOGGER.debug("Discovered BT device: %s", discovery_info)
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
+        device = DeviceData()
 
-        name = discovery_info.advertisement.local_name
-        self.context["title_placeholders"] = {"name": name}
-        self._discovered_device = Discovery(name, discovery_info)
+        if not device.supported(discovery_info):
+            return self.async_abort(reason="not_supported")
+
+        title = _title(discovery_info, device)
+        self.context["title_placeholders"] = {"name": title}
+        self._discovery_info = discovery_info
+        self._discovered_device = device
 
         return await self.async_step_bluetooth_confirm()
 
@@ -73,10 +66,8 @@ class McwConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Confirm discovery."""
-        if user_input is not None:
-            return self.async_create_entry(
-                title=self.context["title_placeholders"]["name"], data=user_input
-            )
+        if user_input is not None or not onboarding.async_is_onboarded(self.hass):
+            return self._async_get_or_create_entry()
 
         self._set_confirm_only()
         return self.async_show_form(
@@ -94,65 +85,63 @@ class McwConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             discovery = self._discovered_devices[address]
 
-            self.context["title_placeholders"] = {
-                "name": discovery.name,
-            }
+            self.context["title_placeholders"] = {"name": discovery.title}
 
-            self._discovered_device = discovery
+            self._discovery_info = discovery.discovery_info
+            self._discovered_device = discovery.device
 
-            return self.async_create_entry(title=discovery.name, data=user_input)
+            return self._async_get_or_create_entry()
 
-        current_addresses = self._async_current_ids()
+        current_addresses = self._async_current_ids(include_ignore=False)
         for discovery_info in async_discovered_service_info(self.hass):
             address = discovery_info.address
             if address in current_addresses or address in self._discovered_devices:
                 continue
-
-            ##
-
-            if discovery_info.advertisement.local_name is None:
-                continue
-            # if not (
-            #     discovery_info.advertisement.local_name.startswith("FR:RU")
-            #     or discovery_info.advertisement.local_name.startswith("FR:RE")
-            #     or discovery_info.advertisement.local_name.startswith("FR:GI")
-            #     or discovery_info.advertisement.local_name.startswith("FR:H")
-            #     or discovery_info.advertisement.local_name.startswith("FR:R2")
-            #     or discovery_info.advertisement.local_name.startswith("FR:RD")
-            #     or discovery_info.advertisement.local_name.startswith("FR:GL")
-            #     or discovery_info.advertisement.local_name.startswith("FR:GJ")
-            #     or discovery_info.advertisement.local_name.startswith("FR:I")
-            # ):
-            #     continue
-
-            _LOGGER.debug("Found My Device")
-            _LOGGER.debug("Mcw0 Discovery address: %s", address)
-            _LOGGER.debug("Mcw0 Man Data: %s", discovery_info.manufacturer_data)
-            _LOGGER.debug("Mcw0 advertisement: %s", discovery_info.advertisement)
-            _LOGGER.debug("Mcw0 device: %s", discovery_info.device)
-            _LOGGER.debug("Mcw0 service data: %s", discovery_info.service_data)
-            _LOGGER.debug("Mcw0 service uuids: %s", discovery_info.service_uuids)
-            _LOGGER.debug("Mcw0 rssi: %s", discovery_info.rssi)
-            _LOGGER.debug(
-                "Mcw0 advertisement: %s", discovery_info.advertisement.local_name
-            )
-            name = discovery_info.advertisement.local_name
-            self._discovered_devices[address] = Discovery(name, discovery_info)
+            device = DeviceData()
+            if device.supported(discovery_info):
+                self._discovered_devices[address] = Discovery(
+                    title=_title(discovery_info, device),
+                    discovery_info=discovery_info,
+                    device=device,
+                )
 
         if not self._discovered_devices:
             return self.async_abort(reason="no_devices_found")
 
         titles = {
-            title: f"{discovery.name} ({discovery.discovery_info.address})"
-            for (title, discovery) in self._discovered_devices.items()
+            address: discovery.title
+            for (address, discovery) in self._discovered_devices.items()
         }
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_ADDRESS): vol.In(titles),
-                }
-            ),
+            data_schema=vol.Schema({vol.Required(CONF_ADDRESS): vol.In(titles)}),
         )
 
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Handle a flow initialized by a reauth event."""
+        device: DeviceData = entry_data["device"]
+        self._discovered_device = device
 
+        self._discovery_info = device.last_service_info
+
+        # Otherwise there wasn't actually encryption so abort
+        return self.async_abort(reason="reauth_successful")
+
+    def _async_get_or_create_entry(
+        self, bindkey: str | None = None
+    ) -> ConfigFlowResult:
+        data: dict[str, Any] = {}
+        if bindkey:
+            data["bindkey"] = bindkey
+
+        if self.source == SOURCE_REAUTH:
+            return self.async_update_reload_and_abort(
+                self._get_reauth_entry(), data=data
+            )
+
+        return self.async_create_entry(
+            title=self.context["title_placeholders"]["name"],
+            data=data,
+        )

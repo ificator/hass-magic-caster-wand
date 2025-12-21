@@ -190,7 +190,11 @@ class McwSellSensor(
             manufacturer = "Mcw",
         )
 
-    
+    @property
+    def icon(self) -> str | None:
+        """Icon of the entity, based on time."""
+        return "mdi:magic-staff"
+
     @property
     def native_value(self) -> StateType:
         """Return the value reported by the sensor."""

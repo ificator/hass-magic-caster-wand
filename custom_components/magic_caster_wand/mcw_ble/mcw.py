@@ -11,8 +11,6 @@ from bleak import BleakClient, BleakError
 from bleak.backends.device import BLEDevice
 from bleak_retry_connector import establish_connection
 
-from .protocol import Protocol, ResponseFirmware, ResponseBoxAddress, ResponseWandType, EventSpell, EventButton, WandModel, ResponseSerialNumber, ResponseSKU, \
-    ResponseManufacturerID, ResponseDeviceID, ResponseEdition, ResponseCompanionAddress
 
 SERVICE_UUID = "57420001-587e-48a0-974c-544d6163c577"
 COMMAND_UUID = "57420002-587e-48a0-974c-544d6163c577"
@@ -92,41 +90,28 @@ class McwClient:
         if self.command_data == None:
             self.command_data = bytes(data)
             self.event.set()
-        response = Protocol.parse_response(data)
-        response_strem = Protocol.parse_stream(data)
-        if isinstance(response_strem, EventSpell):
-            _LOGGER.debug("spell: %s", response_strem.name)
-            if self.callback:
-                self.callback(response_strem.name)
-        # elif isinstance(response_strem, EventButton):
-        #     if response_strem.is_big_pressed:
-        #         self.callback("big")
-        #     elif response_strem.is_top_pressed:
-        #         self.callback("top")
-        #     elif response_strem.is_mid_pressed:
-        #         self.callback("mid")
-        #     elif response_strem.is_bot_pressed:
-        #         self.callback("bot")
-        if isinstance(response, ResponseWandType):
-            self.wand_type = response
-        elif isinstance(response, ResponseSerialNumber):
-            self.serial_number = response
-        elif isinstance(response, ResponseSKU):
-            self.sku = response
-        elif isinstance(response, ResponseFirmware):
-            self.firmware = response
-        elif isinstance(response, ResponseBoxAddress):
-            self.box_address = response
-        elif isinstance(response, ResponseManufacturerID):
-            self.manufacturer_id = response
-        elif isinstance(response, ResponseDeviceID):
-            self.device_id = response
-        elif isinstance(response, ResponseEdition):
-            self.edition = response
-        elif isinstance(response, ResponseCompanionAddress):
-            self.companion_address = response
-        elif response is None:
-            pass           
+
+        if not data or len(data) < 2:
+            return
+        opcode = data[0]
+        if opcode == 0x24:
+            try:
+                if len(data) < 6: 
+                    return
+                spell_len = data[4]
+                raw_name = data[5 : 5 + spell_len]
+                spell_name = raw_name.decode('utf-8', errors='ignore').strip()
+                spell_name = spell_name.replace('\x00', '').replace('_', ' ')
+                if not spell_name:
+                    return
+                _LOGGER.debug("spell: %s", spell_name)
+                _LOGGER.debug("callback: %s", self.callback)
+                if self.callback:
+                    self.callback(spell_name)   
+
+            except Exception as e:
+                print(f"Spell Parse Error: {e}")
+                return       
 
     async def read(self, timeout: float = 5.0) -> bytes:
         await wait_for(self.event.wait(), timeout)
@@ -151,13 +136,4 @@ class McwClient:
                 raise last_exception
             
     async def keep_alive(self) -> bytes:
-        res = await self.write_command(Protocol.build_keep_alive())
-        return Protocol.parse_response(res)
-    
-    async def request_firmware(self) -> ResponseFirmware:
-        res = await self.write_command(Protocol.build_request_firmware())
-        return Protocol.parse_response(res)
-
-    async def request_request_box_address(self) -> ResponseBoxAddress:
-        res = await self.write_command(Protocol.build_request_box_address())
-        return Protocol.parse_response(res)
+        res = await self.write_command(struct.pack('B', 0x01))
