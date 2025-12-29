@@ -1,7 +1,28 @@
 # hass-magic-caster-wand
 Harry Potter: Magic Caster Wand Home Assistant Integration
 
-<img width="1703" height="851" alt="image" src="https://github.com/user-attachments/assets/31043ee9-4582-4d6f-a71f-8294a2fdd0d2" />
+<table>
+  <tr>
+    <td colspan="2" align="center">
+      <img width="1703" height="851" alt="mcw" src="./docs/images/mcw.png" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="bottom">
+      <img width="180"
+           alt="Turn on device demo"
+           src="./docs/images/device_on.gif" />
+      <div style="margin-top:8px;"><b>Turn on Device</b></div>
+    </td>
+    <td align="center" valign="bottom">
+      <img width="550"
+           alt="Turn on light demo"
+           src="./docs/images/light_on.gif" />
+      <div style="margin-top:8px;"><b>Turn on Light</b></div>
+    </td>
+  </tr>
+</table>
+
 
 
 ## 💬 Feedback & Support
