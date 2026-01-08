@@ -102,6 +102,7 @@ class McwClient:
         self._waiting_cmd_event: Event = Event()
         self._waiting_for_msg_id: int | None = None
         self._wand_address = None
+        self._wand_device_id = None
         self._wand_firmware_version = None
         self._wand_serial_number = None
         self._wand_sku = None
@@ -282,6 +283,12 @@ class McwClient:
             await self.write_command(struct.pack('B', CMD_ID_GET_BOX_ADDRESS))
         return self._box_address or ""
 
+    async def get_wand_device_id(self) -> str:
+        """Get wand device ID"""
+        if self._wand_device_id is None:
+            await self.write_command(struct.pack('BB', CMD_ID_GET_WAND_INFORMATION, 0x04))
+        return self._wand_device_id or ""
+
     async def get_wand_firmware_version(self) -> str:
         """Request firmware version"""
         if self._wand_firmware_version is None:
@@ -300,10 +307,10 @@ class McwClient:
             await self.write_command(struct.pack('BB', CMD_ID_GET_WAND_INFORMATION, 0x02))
         return self._wand_sku or ""
 
-    async def get_wand_type(self) -> str:
+    def get_wand_type(self) -> str:
         """Get wand model type"""
         if self._wand_type is None:
-            await self.write_command(struct.pack('BB', CMD_ID_GET_WAND_INFORMATION, 0x04))
+            self._wand_type = self._wand_device_id_to_type(self.get_wand_device_id())
         return self._wand_type or ""
 
     async def calibrate_button_baseline(self) -> None:
@@ -402,12 +409,48 @@ class McwClient:
                 if len(data) >= 6:
                     serial = struct.unpack('<I', data[2:6])[0]
                     self._wand_serial_number = str(serial)
-                    _LOGGER.debug("Serial number: %s", self._wand_serial_number)
+                    _LOGGER.debug("Wand serial number: %s", self._wand_serial_number)
             elif info_type == 0x02:
                 self._wand_sku = data[2:].decode('ascii', errors='ignore').strip('\x00')
-                _LOGGER.debug("SKU: %s", self._wand_sku)
+                _LOGGER.debug("Wand SKU: %s", self._wand_sku)
             elif info_type == 0x04:
-                self._wand_type = data[2:].decode('ascii', errors='ignore').strip('\x00')
-                _LOGGER.debug("Wand type: %s", self._wand_type)
+                self._wand_device_id = data[2:].decode('ascii', errors='ignore').strip('\x00')
+                _LOGGER.debug("Wand device id: %s", self._wand_device_id)
         except Exception as e:
             _LOGGER.error("Error parsing wand information: %s", e)
+    
+    def _wand_device_id_to_type(self, device_id: str) -> str:
+        """Extract wand type from device ID string
+
+        Device ID format: [prefix][type_suffix][variant_char]
+        Example: "WBMC22G1SHNW" -> "HN" -> "HONOURABLE"
+
+        Based on Android WandDeviceInfoFactory.java:
+        - Drop last character
+        - Take last 2 characters
+        - Map to WandType enum
+
+        Args:
+            device_id: Device ID string from product info (e.g., "WBMC22G1SHNW")
+
+        Returns:
+            Wand type string (e.g., "HONOURABLE", "HEROIC", etc.)
+        """
+        if len(device_id) < 3:
+            return "UNKNOWN"
+
+        # Extract type suffix: drop last char, take last 2
+        # Example: "WBMC22G1SHNW" -> "WBMC22G1SHN" -> "HN"
+        type_suffix = device_id[:-1][-2:]
+
+        # Map suffix to wand type (from WandType.java)
+        type_mapping = {
+            "DF": "DEFIANT",
+            "LY": "LOYAL",
+            "HR": "HEROIC",
+            "HN": "HONOURABLE",
+            "AV": "ADVENTUROUS",
+            "WS": "WISE",
+        }
+
+        return type_mapping.get(type_suffix, "UNKNOWN")
