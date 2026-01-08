@@ -307,10 +307,10 @@ class McwClient:
             await self.write_command(struct.pack('BB', CMD_ID_GET_WAND_INFORMATION, 0x02))
         return self._wand_sku or ""
 
-    def get_wand_type(self) -> str:
+    async def get_wand_type(self) -> str:
         """Get wand model type"""
         if self._wand_type is None:
-            self._wand_type = self._wand_device_id_to_type(self.get_wand_device_id())
+            self._wand_type = self._wand_device_id_to_type(await self.get_wand_device_id())
         return self._wand_type or ""
 
     async def calibrate_button_baseline(self) -> None:

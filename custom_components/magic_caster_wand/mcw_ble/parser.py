@@ -92,7 +92,9 @@ class McwDevice:
         self._mcw.register_callbacks(self.callback_spell, self.callback_battery, self.callback_button)
         await self._mcw.start_notify()
         await self._mcw.init_wand()
-        self.model = await self._mcw.get_wand_device_id()
+        device_id = await self._mcw.get_wand_device_id()
+        wand_type = await self._mcw.get_wand_type()
+        self.model = f"{device_id} ({wand_type})" if wand_type != "UNKNOWN" else device_id
         return True
     
     async def disconnect(self):
