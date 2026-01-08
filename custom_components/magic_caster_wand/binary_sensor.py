@@ -89,8 +89,17 @@ class McwButtonSensor(
         return "mdi:circle-outline"
 
     @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        # Entity is available only when wand is connected
+        return self._mcw.is_connected()
+
+    @property
     def is_on(self) -> bool:
         """Return true if the button pad is touched."""
+        # If not connected, always return False
+        if not self.available:
+            return False
         return self._is_on
 
     @callback
@@ -99,4 +108,7 @@ class McwButtonSensor(
         if self.coordinator.data:
             self._is_on = self.coordinator.data.get(self._pad_key, False)
             _LOGGER.debug("Button pad %d state: %s", self._pad_number, self._is_on)
+        else:
+            # Reset to off when no data (e.g., disconnected)
+            self._is_on = False
         super()._handle_coordinator_update()
