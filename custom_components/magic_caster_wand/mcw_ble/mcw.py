@@ -25,6 +25,9 @@ CMD_ID_SET_BUTTON_THRESHOLD = 0xDC
 CMD_ID_CALIBRATE_BUTTON_BASELINE = 0xFB
 CMD_ID_RESET = 0xFF
 
+# Macro Command IDs (based on Android implementation)
+MACRO_CMD_ID_VIBRATE = 0x50
+
 # Message IDs (based on Android implementation)
 MSG_ID_FIRMWARE_VERSION = 0x00
 MSG_ID_BOX_ADDRESS = 0x09
@@ -327,6 +330,7 @@ class McwClient:
         await self._factory_unlock()
         await self.write_command(struct.pack('B', CMD_ID_CALIBRATE_BUTTON_BASELINE))
         await sleep(1.0)
+        await self.vibrate(200)
 
     async def reset_wand(self) -> None:
         """Reset wand to default configuration
@@ -335,6 +339,28 @@ class McwClient:
         """
         _LOGGER.warning("Resetting wand to defaults")
         await self.write_command(struct.pack('B', CMD_ID_RESET))
+
+    async def vibrate(self, duration_ms: int = 100) -> None:
+        """Trigger wand vibration (haptic feedback)
+
+        Args:
+            duration_ms: Vibration duration in milliseconds (max 32767)
+
+        Based on Android: MacroHapBuzzMessage (opcode 0x50 'P')
+        Format: [0x68] [0x50] [duration_low] [duration_high]
+        """
+        if duration_ms > 32767:
+            duration_ms = 32767
+
+        _LOGGER.debug("Sending vibrate command (%dms)", duration_ms)
+
+        # Convert to little-endian short
+        duration_bytes = struct.pack('<H', duration_ms)
+
+        # Build macro: buzz command (0x50) + duration
+        macro = struct.pack('BBB', MACRO_CMD_ID_VIBRATE, duration_bytes[1], duration_bytes[0])
+
+        await self._send_macro(macro)
 
     async def _factory_unlock(self) -> None:
         """Unlock factory/calibration mode
@@ -418,7 +444,17 @@ class McwClient:
                 _LOGGER.debug("Wand device id: %s", self._wand_device_id)
         except Exception as e:
             _LOGGER.error("Error parsing wand information: %s", e)
-    
+
+    async def _send_macro(self, macro_bytes: bytes) -> None:
+        """Send a raw macro command to the wand
+
+        Args:
+            macro_bytes: Raw macro payload (without the 'h' prefix)
+        """
+        # Macro messages are prefixed with 0x68 ('h')
+        payload = b'\x68' + macro_bytes
+        await self.write_command(payload, False)
+
     def _wand_device_id_to_type(self, device_id: str) -> str:
         """Extract wand type from device ID string
 
