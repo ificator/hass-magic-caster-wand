@@ -178,6 +178,23 @@ repository into the `custom_components/magic_caster_wand` directory.
 </table>
 
 
+## Spell Canvas
+The Spell Canvas provides real-time visualization of your wand's movements.
+
+>[!TIP]
+>If the spell canvas screen does not appear or update, try turning the **Spell Tracking** switch off and then back on.
+
+- **Spell Tracking**: Turn on the **Spell Tracking** switch to start receiving IMU data from the wand.
+- **Drawing**: Drawing on the canvas begins automatically when the wand's button is pressed and all button states are detected.
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="./docs/images/spell_canvas.png" width="600" alt="Spell Canvas Demo"/>
+    </td>
+  </tr>
+</table>
+
 ## Automation Example
 ```yaml
 alias: Lumos
