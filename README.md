@@ -196,6 +196,7 @@ The Spell Canvas provides real-time visualization of your wand's movements.
     </td>
   </tr>
 </table>
+
 > [!NOTE]
 > The `model.tflite` file is not shared publicly at this time due to potential issues and to ensure compatibility.
 
