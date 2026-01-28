@@ -39,9 +39,10 @@ class BLEData:
 class McwDevice:
     """Data handler for Magic Caster Wand BLE device."""
 
-    def __init__(self, address: str) -> None:
+    def __init__(self, address: str, tflite_url: str = "http://b5e3f765-tflite-server:8000") -> None:
         """Initialize the device."""
         self.address = address
+        self.tflite_url = tflite_url
         self.client: BleakClient | None = None
         self.model: str | None = None
         self._mcw: McwClient | None = None
@@ -52,16 +53,30 @@ class McwDevice:
         self._coordinator_calibration = None
         self._coordinator_imu = None
         self._spell_tracker: SpellTracker | None = None
+        self._button_all_pressed: bool = False
+        self._spell_reset_timeout_task: asyncio.Task[None] | None = None
+        self._casting_led_color: tuple[int, int, int] = (0, 0, 255)  # Default color: blue
+        self._server_reachable: bool = False
 
-        try:
-            if _MODEL_PATH.exists():
+        self._init_spell_tracker()
+
+    def _init_spell_tracker(self) -> None:
+        """Initialize the spell tracker if the model exists."""
+        if _MODEL_PATH.exists():
+            try:
+                # Persistent detector and tracker
                 self._spell_tracker = SpellTracker(
                     RemoteTensorSpellDetector(
                         model_path=_MODEL_PATH,
-                        base_url="http://b5e3f765-tflite-server.local.hass.io:8000/",
+                        base_url=self.tflite_url,
                     ))
-        except:
-            pass
+                _LOGGER.debug("Persistent spell tracker created")
+            except Exception as err:
+                _LOGGER.warning("Failed to create spell detector: %s", err)
+        else:
+            _LOGGER.warning("Spell detection model not found at %s. Server-side spell detection will be disabled.", _MODEL_PATH)
+
+
 
     def register_coordinator(self, cn_spell, cn_battery, cn_buttons, cn_calibration=None, cn_imu=None) -> None:
         """Register coordinators for spell, battery, button, and calibration updates."""
@@ -73,9 +88,6 @@ class McwDevice:
 
     def _callback_spell(self, data: str) -> None:
         """Handle spell detection callback from wand-native detection."""
-        # Ignore native spell detection if using server-side tracking
-        if self._spell_tracker is not None:
-            return
         if self._coordinator_spell:
             self._coordinator_spell.async_set_updated_data(data)
 
@@ -96,7 +108,6 @@ class McwDevice:
             # Transition: not pressed -> pressed = start tracking
             if button_all and not self._button_all_pressed:
                 _LOGGER.debug("All buttons pressed, starting spell tracking")
-                self._cancel_spell_reset_timeout()
                 asyncio.create_task(self._turn_on_casting_led())
                 self._spell_tracker.start()
 
@@ -104,31 +115,19 @@ class McwDevice:
             elif not button_all and self._button_all_pressed:
                 _LOGGER.debug("Buttons released, stopping spell tracking")
                 asyncio.create_task(self._turn_off_casting_led())
-                spell_name = self._spell_tracker.stop()
-                if spell_name and self._coordinator_spell:
-                    _LOGGER.debug("Server-side spell detected: %s", spell_name)
-                    self._coordinator_spell.async_set_updated_data(spell_name)
-                # Start timeout to reset spell back to default state
-                self._spell_reset_timeout_task = asyncio.create_task(self._spell_reset_timeout())
+                asyncio.create_task(self._async_stop_and_detect_spell())
 
             self._button_all_pressed = button_all
 
-    def _cancel_spell_reset_timeout(self) -> None:
-        """Cancel any pending spell reset timeout task."""
-        if self._spell_reset_timeout_task is not None:
-            self._spell_reset_timeout_task.cancel()
-            self._spell_reset_timeout_task = None
+    async def _async_stop_and_detect_spell(self) -> None:
+        """Stop spell tracking and detect spell asynchronously."""
+        if self._spell_tracker is None:
+            return
 
-    async def _spell_reset_timeout(self) -> None:
-        """Reset spell to default state after configured duration."""
-        try:
-            timeout = 1.0 # seconds
-            await asyncio.sleep(timeout)
-            _LOGGER.debug("Resetting spell to default state after %.1f seconds", timeout)
-            if self._coordinator_spell:
-                self._coordinator_spell.async_set_updated_data("awaiting")
-        except asyncio.CancelledError:
-            pass
+        spell_name = await self._spell_tracker.stop()
+        if spell_name and self._coordinator_spell:
+            _LOGGER.debug("Server-side spell detected: %s", spell_name)
+            self._coordinator_spell.async_set_updated_data(spell_name)
 
     async def _turn_on_casting_led(self) -> None:
         """Turn on the casting LED with configured color."""
@@ -158,6 +157,17 @@ class McwDevice:
         """Handle IMU data update callback."""
         if self._coordinator_imu:
             self._coordinator_imu.async_set_updated_data(data)
+
+        if self._spell_tracker is not None:
+            for sample in data:
+                self._spell_tracker.update(
+                    ax=sample['accel_y'],
+                    ay=-sample['accel_x'],
+                    az=sample['accel_z'],
+                    gx=sample['gyro_y'],
+                    gy=-sample['gyro_x'],
+                    gz=sample['gyro_z']
+                )
 
     def is_connected(self) -> bool:
         """Check if the device is currently connected."""
@@ -200,11 +210,6 @@ class McwDevice:
             if not self.model:
                 self.model = await self._mcw.get_wand_device_id()
                 await self._mcw.init_wand()
-
-            # Start IMU streaming if using server-side spell detection
-            if self._spell_tracker is not None:
-                _LOGGER.debug("Starting IMU streaming for server-side spell detection")
-                await self._mcw.imu_streaming_start()
 
             _LOGGER.debug("Connected to Magic Caster Wand: %s, %s", ble_device.address, self.model)
             return True
@@ -270,8 +275,14 @@ class McwDevice:
     def spell_detection_mode(self) -> str:
         """Get the current spell detection mode."""
         if self._spell_tracker is not None:
-            return "server"
-        return "wand"
+            if self._spell_tracker.is_active:
+                return "Server"
+        return "Wand"
+
+    @property
+    def server_reachable(self) -> bool:
+        """Check if the TFLite server is reachable."""
+        return self._server_reachable
 
     async def buzz(self, duration: int) -> None:
         """Vibrate the wand."""
@@ -283,10 +294,15 @@ class McwDevice:
         if self.is_connected() and self._mcw:
             await self._mcw.clear_leds()
 
-    async def send_calibration(self) -> None:
-        """Send calibration packet."""
+    async def send_button_calibration(self) -> None:
+        """Send button calibration packet."""
         if self.is_connected() and self._mcw:
-            await self._mcw.calibration()
+            await self._mcw.calibration_button()
+
+    async def send_imu_calibration(self) -> None:
+        """Send IMU calibration packet."""
+        if self.is_connected() and self._mcw:
+            await self._mcw.calibration_imu()
 
     async def imu_streaming_start(self) -> None:
         """Start IMU streaming."""
@@ -297,6 +313,36 @@ class McwDevice:
         """Stop IMU streaming."""
         if self.is_connected() and self._mcw:
             await self._mcw.imu_streaming_stop()
+
+    async def async_spell_tracker_init(self) -> None:
+        """Initialize spell tracker and detector session."""
+        if self._spell_tracker is None:
+            self._init_spell_tracker()
+
+        if self._spell_tracker is None:
+            _LOGGER.warning("Spell tracker not created, cannot initialize")
+            return
+
+        try:
+            # Perform connectivity check before opening full session
+            self._server_reachable = await self._spell_tracker.detector.check_connectivity()
+            if self._server_reachable:
+                # async_init will handle session creation and one-time upload
+                await self._spell_tracker.detector.async_init()
+                _LOGGER.debug("Spell tracker session initialized and verified")
+            else:
+                _LOGGER.warning("TFLite server at %s is not reachable. Spell detection will not be available.", 
+                               self._spell_tracker.detector._base_url)
+        except Exception as err:
+            self._server_reachable = False
+            _LOGGER.warning("Failed to initialize remote spell detector session: %s", err)
+
+    async def async_spell_tracker_close(self) -> None:
+        """Close spell tracker session but keep the object."""
+        if self._spell_tracker is not None:
+            _LOGGER.debug("Closing spell tracker session")
+            await self._spell_tracker.close()
+            # Do NOT set self._spell_tracker = None to keep upload state
 
 
 class McwBluetoothDeviceData(BluetoothData):
