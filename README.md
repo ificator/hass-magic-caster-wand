@@ -186,6 +186,11 @@ The Spell Canvas provides real-time visualization of your wand's movements.
 <table>
   <tr>
     <td colspan="2" align="center">
+      <img width="940" alt="mcw" src="./docs/images/tflite_server.png" />
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
       <img width="722" height="222" alt="image" src="https://github.com/user-attachments/assets/8b896c42-170c-47dc-a7e9-212a4e179563" />
     </td>
     <td colspan="2" align="center">
