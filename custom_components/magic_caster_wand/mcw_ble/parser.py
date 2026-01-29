@@ -49,6 +49,7 @@ class McwDevice:
         self._coordinator_buttons = None
         self._coordinator_calibration = None
         self._coordinator_imu = None
+        self._coordinator_connection = None
         self._spell_tracker: SpellTracker | None = None
         self._button_all_pressed: bool = False
         self._spell_reset_timeout_task: asyncio.Task[None] | None = None
@@ -72,13 +73,14 @@ class McwDevice:
 
 
 
-    def register_coordinator(self, cn_spell, cn_battery, cn_buttons, cn_calibration=None, cn_imu=None) -> None:
-        """Register coordinators for spell, battery, button, and calibration updates."""
+    def register_coordinator(self, cn_spell, cn_battery, cn_buttons, cn_calibration=None, cn_imu=None, cn_connection=None) -> None:
+        """Register coordinators for spell, battery, button, calibration, and connection updates."""
         self._coordinator_spell = cn_spell
         self._coordinator_battery = cn_battery
         self._coordinator_buttons = cn_buttons
         self._coordinator_calibration = cn_calibration
         self._coordinator_imu = cn_imu
+        self._coordinator_connection = cn_connection
 
     def _callback_spell(self, data: str) -> None:
         """Handle spell detection callback from wand-native detection."""
@@ -207,6 +209,8 @@ class McwDevice:
                 await self._mcw.init_wand()
 
             _LOGGER.debug("Connected to Magic Caster Wand: %s, %s", ble_device.address, self.model)
+            if self._coordinator_connection:
+                self._coordinator_connection.async_set_updated_data(True)
             return True
 
         except Exception as err:
@@ -239,6 +243,8 @@ class McwDevice:
                         "button_4": False,
                         "button_all": False,
                     })
+                if self._coordinator_connection:
+                    self._coordinator_connection.async_set_updated_data(False)
 
     async def update_device(self, ble_device: BLEDevice) -> BLEData:
         """Update device data. Sends keep-alive if connected."""
