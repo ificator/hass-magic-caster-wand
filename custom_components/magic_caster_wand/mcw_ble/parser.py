@@ -35,11 +35,12 @@ class BLEData:
 class McwDevice:
     """Data handler for Magic Caster Wand BLE device."""
 
-    def __init__(self, address: str, tflite_url: str = "http://b5e3f765-tflite-server:8000", model_name: str = "model.tflite") -> None:
+    def __init__(self, address: str, tflite_url: str = "http://b5e3f765-tflite-server:8000", model_name: str = "model.tflite", spell_timeout: int = 5) -> None:
         """Initialize the device."""
         self.address = address
         self.tflite_url = tflite_url
         self.model_name = model_name
+        self.spell_timeout = spell_timeout
         self.client: BleakClient | None = None
         self.model: str | None = None
         self._mcw: McwClient | None = None
@@ -80,10 +81,35 @@ class McwDevice:
         self._coordinator_calibration = cn_calibration
         self._coordinator_imu = cn_imu
 
+    def _schedule_spell_reset(self) -> None:
+        """Schedule a reset of the spell sensor back to 'awaiting' after the configured timeout."""
+        # Cancel any existing timeout task
+        if self._spell_reset_timeout_task is not None:
+            self._spell_reset_timeout_task.cancel()
+            self._spell_reset_timeout_task = None
+
+        # Only schedule if timeout is greater than 0
+        if self.spell_timeout > 0:
+            self._spell_reset_timeout_task = asyncio.create_task(self._async_reset_spell_after_timeout())
+
+    async def _async_reset_spell_after_timeout(self) -> None:
+        """Reset the spell sensor to 'awaiting' after the configured timeout."""
+        try:
+            await asyncio.sleep(self.spell_timeout)
+            if self._coordinator_spell:
+                _LOGGER.debug("Spell timeout reached, resetting to 'awaiting'")
+                self._coordinator_spell.async_set_updated_data("awaiting")
+        except asyncio.CancelledError:
+            # Task was cancelled (likely because a new spell was detected)
+            pass
+        finally:
+            self._spell_reset_timeout_task = None
+
     def _callback_spell(self, data: str) -> None:
         """Handle spell detection callback from wand-native detection."""
         if self._coordinator_spell:
             self._coordinator_spell.async_set_updated_data(data)
+            self._schedule_spell_reset()
 
     def _callback_battery(self, data: float) -> None:
         """Handle battery update callback."""
@@ -122,6 +148,7 @@ class McwDevice:
         if spell_name and self._coordinator_spell:
             _LOGGER.debug("Server-side spell detected: %s", spell_name)
             self._coordinator_spell.async_set_updated_data(spell_name)
+            self._schedule_spell_reset()
             await self.buzz(100)
 
     async def _turn_on_casting_led(self) -> None:
