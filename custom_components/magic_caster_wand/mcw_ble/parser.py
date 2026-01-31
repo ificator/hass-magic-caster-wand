@@ -71,8 +71,6 @@ class McwDevice:
         except Exception as err:
             _LOGGER.warning("Failed to create spell detector: %s", err)
 
-
-
     def register_coordinator(self, cn_spell, cn_battery, cn_buttons, cn_calibration=None, cn_imu=None, cn_connection=None) -> None:
         """Register coordinators for spell, battery, button, calibration, and connection updates."""
         self._coordinator_spell = cn_spell
@@ -98,7 +96,7 @@ class McwDevice:
             self._coordinator_buttons.async_set_updated_data(data)
 
         # Handle spell tracking start/stop when using server-side detection
-        if self._spell_tracker is not None and self._spell_tracker.detector.is_active:
+        if self._spell_tracker is not None and self._spell_tracker.detector is not None and self._spell_tracker.detector.is_active:
             button_all = data.get("button_all", False)
 
             # Transition: not pressed -> pressed = start tracking
@@ -155,7 +153,7 @@ class McwDevice:
         if self._coordinator_imu:
             self._coordinator_imu.async_set_updated_data(data)
 
-        if self._spell_tracker is not None and self._spell_tracker.detector.is_active:
+        if self._spell_tracker is not None and self._spell_tracker.detector is not None and self._spell_tracker.detector.is_active:
             for sample in data:
                 self._spell_tracker.update(
                     ax=sample['accel_y'],
@@ -279,6 +277,16 @@ class McwDevice:
         """Set LED color."""
         if self.is_connected() and self._mcw:
             await self._mcw.set_led(group, r, g, b, duration)
+
+    @property
+    def casting_led_color(self) -> tuple[int, int, int]:
+        """Get the current casting LED color."""
+        return self._casting_led_color
+
+    @casting_led_color.setter
+    def casting_led_color(self, value: tuple[int, int, int]) -> None:
+        """Set the casting LED color."""
+        self._casting_led_color = value
 
     @property
     def spell_detection_mode(self) -> str:
