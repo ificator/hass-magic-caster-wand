@@ -6,7 +6,7 @@ DEFAULT_SCAN_INTERVAL = 300
 CONF_TFLITE_URL = "tflite_url"
 DEFAULT_TFLITE_URL = "http://b5e3f765-tflite-server:8000"
 CONF_SPELL_TIMEOUT = "spell_timeout"
-DEFAULT_SPELL_TIMEOUT = 5
+DEFAULT_SPELL_TIMEOUT = 0
 
 # Casting LED color options (name -> RGB tuple)
 CASTING_LED_COLORS = {

@@ -35,12 +35,11 @@ class BLEData:
 class McwDevice:
     """Data handler for Magic Caster Wand BLE device."""
 
-    def __init__(self, address: str, tflite_url: str = "http://b5e3f765-tflite-server:8000", model_name: str = "model.tflite", spell_timeout: int = 5) -> None:
+    def __init__(self, address: str, tflite_url: str = "http://b5e3f765-tflite-server:8000", model_name: str = "model.tflite", spell_timeout: int = 0) -> None:
         """Initialize the device."""
         self.address = address
         self.tflite_url = tflite_url
         self.model_name = model_name
-        self.spell_timeout = spell_timeout
         self.client: BleakClient | None = None
         self.model: str | None = None
         self._mcw: McwClient | None = None
@@ -51,6 +50,7 @@ class McwDevice:
         self._coordinator_calibration = None
         self._coordinator_imu = None
         self._coordinator_connection = None
+        self._spell_timeout = spell_timeout
         self._spell_tracker: SpellTracker | None = None
         self._button_all_pressed: bool = False
         self._spell_reset_timeout_task: asyncio.Task[None] | None = None
@@ -89,13 +89,13 @@ class McwDevice:
             self._spell_reset_timeout_task = None
 
         # Only schedule if timeout is greater than 0
-        if self.spell_timeout > 0:
+        if self._spell_timeout > 0:
             self._spell_reset_timeout_task = asyncio.create_task(self._async_reset_spell_after_timeout())
 
     async def _async_reset_spell_after_timeout(self) -> None:
         """Reset the spell sensor to 'awaiting' after the configured timeout."""
         try:
-            await asyncio.sleep(self.spell_timeout)
+            await asyncio.sleep(self._spell_timeout)
             if self._coordinator_spell:
                 _LOGGER.debug("Spell timeout reached, resetting to 'awaiting'")
                 self._coordinator_spell.async_set_updated_data("awaiting")
